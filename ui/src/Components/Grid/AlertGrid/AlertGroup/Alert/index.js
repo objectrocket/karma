@@ -53,17 +53,26 @@ const Alert = observer(
       ];
 
       const silences = {};
-      for (const am of alert.alertmanager) {
-        if (!silences[am.cluster]) {
-          silences[am.cluster] = {
-            alertmanager: am,
+      var upstream = null;
+      if (alert.alertmanager != null) {
+        upstream = alert.alertmanager
+      } else if (alert.sensu != null) {
+        upstream = alert.sensu
+      }
+      if (upstream == null) {
+        return
+      }
+      for (const us of upstream) {
+        if (!silences[us.cluster]) {
+          silences[us.cluster] = {
+            alertmanager: us,
             silences: [
               ...new Set(
-                am.silencedBy.filter(
+                us.silencedBy.filter(
                   (silenceID) =>
                     !(
-                      group.shared.silences[am.cluster] &&
-                      group.shared.silences[am.cluster].includes(silenceID)
+                      group.shared.silences[us.cluster] &&
+                      group.shared.silences[us.cluster].includes(silenceID)
                     )
                 )
               ),
@@ -99,15 +108,15 @@ const Alert = observer(
             silenceFormStore={silenceFormStore}
             setIsMenuOpen={setIsMenuOpen}
           />
-          {alert.alertmanager
-            .map((am) => am.inhibitedBy.length)
+          {upstream
+            .map((us) => us.inhibitedBy.length)
             .reduce((sum, x) => sum + x) > 0 ? (
-            <TooltipWrapper title="This alert is inhibited by other alerts">
-              <span className="badge badge-light components-label">
-                <FontAwesomeIcon className="text-success" icon={faVolumeMute} />
-              </span>
-            </TooltipWrapper>
-          ) : null}
+              <TooltipWrapper title="This alert is inhibited by other alerts">
+                <span className="badge badge-light components-label">
+                  <FontAwesomeIcon className="text-success" icon={faVolumeMute} />
+                </span>
+              </TooltipWrapper>
+            ) : null}
           {Object.entries(alert.labels).map(([name, value]) => (
             <FilteringLabel
               key={name}
@@ -117,14 +126,14 @@ const Alert = observer(
             />
           ))}
           {showAlertmanagers
-            ? alert.alertmanager.map((am) => (
-                <FilteringLabel
-                  key={am.name}
-                  name={StaticLabels.AlertManager}
-                  value={am.name}
-                  alertStore={alertStore}
-                />
-              ))
+            ? upstream.map(us => (
+              <FilteringLabel
+                key={us.name}
+                name={StaticLabels.AlertManager}
+                value={us.name}
+                alertStore={alertStore}
+              />
+            ))
             : null}
           {showReceiver ? (
             <FilteringLabel

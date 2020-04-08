@@ -42,6 +42,7 @@ type Alert struct {
 	InhibitedBy  []string `json:"-" hash:"-"`
 	// karma fields
 	Alertmanager []AlertmanagerInstance `json:"alertmanager"`
+	Sensu        []SensuInstance        `json:"sensu"`
 	Receiver     string                 `json:"receiver"`
 	// fingerprints are precomputed for speed
 	labelsFP  string `hash:"-"`

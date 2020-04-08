@@ -7,6 +7,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.0.3
 	github.com/certifi/gocertifi v0.0.0-20190905060710-a5e0173ced67 // indirect
 	github.com/cnf/structhash v0.0.0-20180104161610-62a607eb0224
+	github.com/davecgh/go-spew v1.1.1
 	github.com/elazarl/go-bindata-assetfs v1.0.1-0.20180223160309-38087fe4dafb
 	github.com/getsentry/raven-go v0.2.0
 	github.com/gin-contrib/cors v1.3.1
@@ -32,6 +33,7 @@ require (
 	github.com/prometheus/client_golang v1.5.1
 	github.com/prometheus/common v0.9.1
 	github.com/rogpeppe/go-internal v1.5.2
+	github.com/sensu/sensu-go v0.0.0-20200306213745-fbe2f3eaf8ff
 	github.com/sirupsen/logrus v1.5.0
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.6.2 // indirect
@@ -40,3 +42,5 @@ require (
 	gopkg.in/yaml.v2 v2.2.8
 	vbom.ml/util v0.0.0-20180919145318-efcd4e0f9787
 )
+
+replace github.com/sensu/sensu-go => github.com/naemono/sensu-go v0.0.0-20200315203607-5fc9045b0d1f

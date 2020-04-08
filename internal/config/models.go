@@ -26,6 +26,16 @@ type AlertmanagerConfig struct {
 	CORS    AlertmanagerCORS `yaml:"cors" koanf:"cors"`
 }
 
+type SensuConfig struct {
+	Name       string
+	Namespaces []string
+	URI        string
+	Username   string
+	Password   string
+	Timeout    time.Duration
+	EventLimit int
+}
+
 type LinkDetectRules struct {
 	Regex       string `yaml:"regex"`
 	URITemplate string `yaml:"uriTemplate" koanf:"uriTemplate"`
@@ -77,6 +87,10 @@ type configSchema struct {
 		Proxy       bool             `yaml:"-" koanf:"proxy"`
 		ReadOnly    bool             `yaml:"-" koanf:"readonly"`
 		CORS        AlertmanagerCORS `yaml:"-" koanf:"cors"`
+	}
+	Sensu struct {
+		Interval time.Duration
+		Servers  []SensuConfig
 	}
 	AlertAcknowledgement struct {
 		Enabled       bool

@@ -17,6 +17,7 @@ import (
 	"github.com/prymitive/karma/internal/config"
 	"github.com/prymitive/karma/internal/models"
 	"github.com/prymitive/karma/internal/regex"
+	"github.com/prymitive/karma/internal/sensu"
 	"github.com/prymitive/karma/internal/transform"
 	"github.com/prymitive/karma/internal/uri"
 
@@ -193,6 +194,36 @@ func setupUpstreams() error {
 		err = alertmanager.RegisterAlertmanager(am)
 		if err != nil {
 			return fmt.Errorf("Failed to register Alertmanager '%s' with URI '%s': %s", s.Name, uri.SanitizeURI(s.URI), err)
+		}
+	}
+
+	for _, s := range config.Config.Sensu.Servers {
+		var (
+			options []sensu.Option
+			su      *sensu.Sensu
+		)
+		options = make([]sensu.Option, 0)
+		optionsMap := map[string]interface{}{}
+		if len(s.Namespaces) > 0 {
+			options = append(options, sensu.WithNamespaces(s.Namespaces))
+			optionsMap["namespaces"] = s.Namespaces
+		}
+		if s.EventLimit > 0 {
+			options = append(options, sensu.WithEventLimit(s.EventLimit))
+			optionsMap["eventLimit"] = s.EventLimit
+		}
+		if s.Timeout != 0*time.Second {
+			options = append(options, sensu.WithTimeout(s.Timeout))
+			optionsMap["timeout"] = s.Timeout.String()
+		}
+		if s.Username != "" && s.Password != "" {
+			options = append(options, sensu.WithUserPass(s.Username, s.Password))
+			optionsMap["username"] = s.Username
+		}
+		su = sensu.New(s.Name, s.URI, options...)
+		err := sensu.Register(su)
+		if err != nil {
+			return fmt.Errorf("Failed to register Sensu '%s' with URI '%s': %s", s.Name, uri.SanitizeURI(s.URI), err)
 		}
 	}
 

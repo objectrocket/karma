@@ -16,6 +16,7 @@ import (
 	"github.com/prymitive/karma/internal/config"
 	"github.com/prymitive/karma/internal/filters"
 	"github.com/prymitive/karma/internal/models"
+	"github.com/prymitive/karma/internal/sensu"
 	"github.com/prymitive/karma/internal/slices"
 	"github.com/prymitive/karma/internal/transform"
 
@@ -365,6 +366,21 @@ func alerts(c *gin.Context) {
 			transform.ColorLabel(colors, filter.GetName(), filter.GetValue())
 		}
 	}
+	sensuAlerts, sensuSilences, _, sensuCounters, sensuMatchFilters := processSensuAlerts(c, &resp)
+
+	for k, v := range sensuAlerts {
+		alerts[k] = v
+	}
+
+	for k, v := range sensuSilences {
+		silences[k] = v
+	}
+
+	for k, v := range sensuCounters {
+		counters[k] = v
+	}
+
+	matchFilters = append(matchFilters, sensuMatchFilters...)
 
 	//resp.AlertGroups = sortAlertGroups(c, alerts)
 	v, _ := c.GetQuery("gridSortReverse")
@@ -390,6 +406,155 @@ func alerts(c *gin.Context) {
 
 	c.Data(http.StatusOK, gin.MIMEJSON, data.([]byte))
 	logAlertsView(c, "MIS", time.Since(start))
+}
+
+func processSensuAlerts(c *gin.Context, resp *models.AlertsResponse) (
+	map[string]models.APIAlertGroup,
+	map[string]map[string]models.Silence,
+	models.LabelsColorMap,
+	map[string]map[string]int,
+	[]filters.FilterT,
+) {
+	// get filters
+	matchFilters, validFilters := getFiltersFromQuery(c.QueryArray("q"))
+
+	// set pointers for data store objects, need a lock until end of view is reached
+	alerts := map[string]models.APIAlertGroup{}
+	colors := models.LabelsColorMap{}
+	counters := map[string]map[string]int{}
+
+	dedupedAlerts := sensu.DedupAlerts()
+	dedupedColors := sensu.DedupColors()
+
+	amNameToCluster := map[string]string{}
+	silences := map[string]map[string]models.Silence{}
+	for _, sensu := range sensu.GetSensus() {
+		key := sensu.ClusterID()
+		amNameToCluster[sensu.Name] = key
+		_, found := silences[key]
+		if !found {
+			silences[key] = map[string]models.Silence{}
+		}
+	}
+
+	var matches int
+	for _, ag := range dedupedAlerts {
+		agCopy := models.AlertGroup{
+			ID:                ag.ID,
+			Receiver:          ag.Receiver,
+			Labels:            ag.Labels,
+			LatestStartsAt:    ag.LatestStartsAt,
+			Alerts:            []models.Alert{},
+			AlertmanagerCount: map[string]int{},
+			StateCount:        map[string]int{},
+		}
+		for _, s := range models.AlertStateList {
+			agCopy.StateCount[s] = 0
+		}
+
+		for _, alert := range ag.Alerts {
+			alert := alert // scopelint pin
+			results := []bool{}
+			if validFilters {
+				for _, filter := range matchFilters {
+					if filter.GetIsValid() {
+						match := filter.Match(&alert, matches)
+						results = append(results, match)
+					}
+				}
+			}
+			if !validFilters || (slices.BoolInSlice(results, true) && !slices.BoolInSlice(results, false)) {
+				matches++
+				// we need to update fingerprints since we've modified some fields in dedup
+				// and agCopy.ContentFingerprint() depends on per alert fingerprint
+				// we update it here rather than in dedup since here we can apply it
+				// only for alerts left after filtering
+				alert.UpdateFingerprints()
+				agCopy.Alerts = append(agCopy.Alerts, alert)
+
+				countLabel(counters, "@state", alert.State)
+
+				countLabel(counters, "@receiver", alert.Receiver)
+				if ck, foundKey := dedupedColors["@receiver"]; foundKey {
+					if cv, foundVal := ck[alert.Receiver]; foundVal {
+						if _, found := colors["@receiver"]; !found {
+							colors["@receiver"] = map[string]models.LabelColors{}
+						}
+						colors["@receiver"][alert.Receiver] = cv
+					}
+				}
+
+				if ck, foundKey := dedupedColors["@alertmanager"]; foundKey {
+					for _, am := range alert.Alertmanager {
+						if cv, foundVal := ck[am.Name]; foundVal {
+							if _, found := colors["@alertmanager"]; !found {
+								colors["@alertmanager"] = map[string]models.LabelColors{}
+							}
+							colors["@alertmanager"][am.Name] = cv
+						}
+					}
+				}
+
+				agCopy.StateCount[alert.State]++
+
+				for _, snsu := range alert.Sensu {
+					if _, found := agCopy.AlertmanagerCount[snsu.Name]; !found {
+						agCopy.AlertmanagerCount[snsu.Name] = 1
+					} else {
+						agCopy.AlertmanagerCount[snsu.Name]++
+					}
+				}
+
+				for key, value := range alert.Labels {
+					if keyMap, foundKey := dedupedColors[key]; foundKey {
+						if color, foundColor := keyMap[value]; foundColor {
+							if _, found := colors[key]; !found {
+								colors[key] = map[string]models.LabelColors{}
+							}
+							colors[key][value] = color
+						}
+					}
+					countLabel(counters, key, value)
+				}
+			}
+		}
+
+		if len(agCopy.Alerts) > 0 {
+			log.Warnf("in len > 0 block")
+			for i, alert := range agCopy.Alerts {
+				if alert.IsSilenced() {
+					for j, su := range alert.Sensu {
+						key := amNameToCluster[su.Name]
+						// cluster might be wrong when collecting (races between fetches)
+						// update is with current cluster discovery state
+						agCopy.Alerts[i].Alertmanager[j].Cluster = key
+						for _, silence := range su.Silences {
+							_, found := silences[key][silence.ID]
+							if !found {
+								silences[key][silence.ID] = *silence
+							}
+						}
+					}
+				}
+			}
+			sort.Sort(agCopy.Alerts)
+			agCopy.LatestStartsAt = agCopy.FindLatestStartsAt()
+			agCopy.Hash = agCopy.ContentFingerprint()
+			apiAG := models.APIAlertGroup{AlertGroup: agCopy}
+			apiAG.DedupSharedMaps()
+			alerts[agCopy.ID] = apiAG
+			resp.TotalAlerts += len(agCopy.Alerts)
+		}
+
+	}
+
+	for _, filter := range matchFilters {
+		if filter.GetValue() != "" && filter.GetMatcher() == "=" {
+			transform.ColorLabel(colors, filter.GetName(), filter.GetValue())
+		}
+	}
+
+	return alerts, silences, colors, counters, matchFilters
 }
 
 // autocomplete endpoint, json, used for filter autocomplete hints

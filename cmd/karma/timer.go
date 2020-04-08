@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/prymitive/karma/internal/alertmanager"
+	"github.com/prymitive/karma/internal/sensu"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -36,9 +37,35 @@ func pullFromAlertmanager() {
 	runtime.GC()
 }
 
+func pullFromSensu() {
+	// always flush cache once we're done
+	defer apiCache.Flush()
+
+	upstreams := sensu.GetSensus()
+	wg := sync.WaitGroup{}
+	wg.Add(len(upstreams))
+
+	for _, upstream := range upstreams {
+		go func(snsu *sensu.Sensu) {
+			log.Infof("[%s] Collecting alerts and silences", snsu.Name)
+			err := snsu.Pull()
+			if err != nil {
+				log.Errorf("[%s] %s", snsu.Name, err)
+			}
+			wg.Done()
+		}(upstream)
+	}
+
+	wg.Wait()
+
+	log.Info("Pull completed")
+	runtime.GC()
+}
+
 // Tick is the background timer used to call PullFromAlertmanager
 func Tick() {
 	for range ticker.C {
 		pullFromAlertmanager()
+		pullFromSensu()
 	}
 }

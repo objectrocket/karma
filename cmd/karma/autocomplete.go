@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/prymitive/karma/internal/alertmanager"
+	"github.com/prymitive/karma/internal/sensu"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -28,6 +29,7 @@ func knownLabelNames(c *gin.Context) {
 	}
 
 	labels := alertmanager.DedupKnownLabels()
+	labels = append(labels, sensu.DedupKnownLabels()...)
 	acData := []string{}
 
 	term, found := c.GetQuery("term")

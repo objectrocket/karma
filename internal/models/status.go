@@ -5,3 +5,8 @@ type AlertmanagerStatus struct {
 	ID      string
 	PeerIDs []string
 }
+
+type SensuStatus struct {
+	ID      string
+	Version string
+}
