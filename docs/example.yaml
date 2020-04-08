@@ -15,6 +15,17 @@ alertmanager:
         ca: /etc/ssl/certs/ca-bundle.crt
         cert: /etc/karma/client.pem
         key: /etc/karma/client.key
+sensu:
+  interval: 60s
+  servers: 
+  - name: remote
+    uri: https://remote.sensu:1120
+    timeout: 30s
+    eventLimit: 100
+    username: admin
+    password: mypass
+    namespaces:
+    - mynamespace
 annotations:
   default:
     hidden: false
