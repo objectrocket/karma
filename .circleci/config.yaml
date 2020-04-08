@@ -1,0 +1,61 @@
+version: 2.1
+
+
+# Yaml References enable us to DRY our our config by sharing variables across multiple jobs.
+# In this case, we are commonly using the "workspaces" feature to share
+# build artifacts and files across jobs. For example, we build our Javascript
+# persist it to a workspace to be made available when the Jekyll site builds.
+references:
+  workspace_root: &workspace_root
+    /tmp/workspace
+  attach_workspace: &attach_workspace
+    attach_workspace:
+      at: *workspace_root
+  restore_go_cache: &restore_go_cache
+    restore_cache:
+            name: Restore go modules directory
+            keys:
+              - modules-{{ checksum "go.sum" }}
+
+orbs:
+  slack: circleci/slack@3.4.2
+
+jobs:
+  docker_push:
+    docker:
+      - image: circleci/golang:1.13
+    steps:
+      - checkout
+      - setup_remote_docker
+      - *restore_go_cache
+      - run:
+          name: Build and push operator container to docker registry
+          command: |
+            git config --global url."https://${GITHUB_ACCESS_TOKEN}:x-oauth-basic@github.com/objectrocket".insteadOf "https://github.com/objectrocket"
+            export GOPROXY=https://proxy.golang.org
+            export GOPRIVATE=github.com/objectrocket
+            go mod download && go mod vendor # dockerfile requires vendor directory
+            export VERSION=$CIRCLE_TAG
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+            make docker-image
+            git checkout go.sum go.mod || true # reset go.sum and go.mod for cache's sake
+            docker push objectrocket/karma:$VERSION
+            docker push objectrocket/karma:latest
+      - save_cache:
+          name: Save modules with key "go.sum"
+          key: modules-{{ checksum "go.sum" }}
+          paths:
+            - /go/pkg/mod
+
+workflows:
+  version: 2
+  deploy:
+    jobs:
+      - docker_push:
+          filters:
+            tags:
+              only:
+                - /^[0-9]+.[0-9]+.[0-9]+-rc[0-9]+$/
+                - /^[0-9]+.[0-9]+.[0-9]+$/
+            branches:
+              ignore: /.*/
