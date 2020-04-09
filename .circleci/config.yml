@@ -37,7 +37,7 @@ jobs:
             go mod download && go mod vendor # dockerfile requires vendor directory
             export VERSION=$CIRCLE_TAG
             docker login -u $DOCKER_USER -p $DOCKER_PASS
-            make docker-image
+            make docker-image VERSION=${VERSION} NAME=${objectrocket/karma}
             git checkout go.sum go.mod || true # reset go.sum and go.mod for cache's sake
             docker push objectrocket/karma:$VERSION
             docker push objectrocket/karma:latest
