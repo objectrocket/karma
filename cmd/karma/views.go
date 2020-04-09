@@ -368,9 +368,24 @@ func alerts(c *gin.Context) {
 	}
 	sensuAlerts, sensuSilences, _, sensuCounters, sensuMatchFilters := processSensuAlerts(c, &resp)
 
-	for k, v := range sensuAlerts {
-		alerts[k] = v
+	grid, found := grids[gridLabel]
+	if !found {
+		grid = models.APIGrid{
+			LabelName:   gridLabel,
+			LabelValue:  gridLabel,
+			AlertGroups: []models.APIAlertGroup{},
+			StateCount:  map[string]int{},
+		}
+		for _, s := range models.AlertStateList {
+			grid.StateCount[s] = 0
+		}
+		grids[gridLabel] = grid
 	}
+
+	for _, v := range sensuAlerts {
+		grid.AlertGroups = append(grid.AlertGroups, v)
+	}
+	grids[gridLabel] = grid
 
 	for k, v := range sensuSilences {
 		silences[k] = v
@@ -382,7 +397,7 @@ func alerts(c *gin.Context) {
 
 	matchFilters = append(matchFilters, sensuMatchFilters...)
 
-	//resp.AlertGroups = sortAlertGroups(c, alerts)
+	// resp.AlertGroups = sortAlertGroups(c, alerts)
 	v, _ := c.GetQuery("gridSortReverse")
 	gridSortReverse := v == "1"
 
@@ -520,7 +535,6 @@ func processSensuAlerts(c *gin.Context, resp *models.AlertsResponse) (
 		}
 
 		if len(agCopy.Alerts) > 0 {
-			log.Warnf("in len > 0 block")
 			for i, alert := range agCopy.Alerts {
 				if alert.IsSilenced() {
 					for j, su := range alert.Sensu {
