@@ -117,7 +117,7 @@ func (s *Sensu) pullAlerts() error {
 	}
 
 	s.filterHealthyEvents()
-	log.Infof("[%s] Got %d alert group(s) in %s", s.Name, len(s.events), time.Since(start))
+	log.Infof("[%s] Got %d sensu unhealthy event(s) in %s", s.Name, len(s.events), time.Since(start))
 	knownLabelsMap := map[string]bool{}
 
 	for _, event := range s.events {
