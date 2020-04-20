@@ -81,7 +81,6 @@ func NewFilter(expression string) FilterT {
 	match := re.FindStringSubmatch(expression)
 	result := make(map[string]string)
 	for i, name := range re.SubexpNames() {
-		fmt.Printf("i: %d, name: %s\n", i, name)
 		if name != "" && i > 0 && i <= len(match) {
 			result[name] = match[i]
 		}
